@@ -37,9 +37,9 @@ namespace onnx {
 
 
 
-struct parse_split : op_parser<parse_split>
+struct parse_splittosequence : op_parser<parse_splittosequence>
 {
-    std::vector<op_desc> operators() const { return {{"Split"}}; }
+    std::vector<op_desc> operators() const { return {{"SplitToSequence"}}; }
 
     std::vector<instruction_ref> parse(const op_desc& opd,
                                        const onnx_parser& parser,
@@ -52,8 +52,13 @@ struct parse_split : op_parser<parse_split>
             axis = parser.parse_value(info.attributes.at("axis")).at<int>();
         }
 
+        int64_t keepdims = 1;
+        if(contains(info.attributes, "keepdims"))
+        {
+            keepdims = parser.parse_value(info.attributes.at("keepdims")).at<int>();
+        }
+
         const auto& input_shape = args[0]->get_shape();
-        // axis over which the split occurs (split_axis)
         int64_t tuned_axis = tune_axis(input_shape.ndim(), axis, opd.onnx_name);
 
         auto split_axis_is_fixed = [&]() {
@@ -62,11 +67,11 @@ struct parse_split : op_parser<parse_split>
 
         if(input_shape.dynamic() and not split_axis_is_fixed())
         {
-            return parse_common_dyn_split(info, args, tuned_axis, "split");
+            return parse_common_dyn_split(info, args, tuned_axis, "splittosequence", true, keepdims);
         }
         else
         {
-            return parse_common_static_split(info, parser, args, tuned_axis, "split");
+            return parse_common_static_split(info, parser, args, tuned_axis, "splittosequence", true, keepdims);
         }
     }
 };

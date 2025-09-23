@@ -15876,6 +15876,106 @@ def split_test():
 
 
 @onnx_test()
+def splittosequence_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [15])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [5])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [5])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [5])
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=0)
+
+    return ([node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
+def splittosequence_keepdims_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [2, 3])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [2])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [2])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [2])
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=1,
+                                 keepdims=0)
+
+    return ([node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
+def splittosequence_axis_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 12])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [3, 4])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [3, 4])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [3, 4])
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=1)
+
+    return ([node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
+def splittosequence_variable_splits_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [11])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [2])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [4])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [5])
+
+    split_tensor = helper.make_tensor(name="split",
+                                      data_type=TensorProto.INT64,
+                                      dims=[3],
+                                      vals=[2, 4, 5])
+    const_node = helper.make_node("Constant",
+                                  inputs=[],
+                                  outputs=['split'],
+                                  value=split_tensor)
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input', 'split'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=0)
+
+    return ([const_node, node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
+def splittosequence_verify_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [6])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [2])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [2])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [2])
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=0)
+
+    return ([node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
+def splittosequence_dynamic_test():
+    input_tensor = helper.make_tensor_value_info('input', TensorProto.FLOAT, [None, 12])
+    y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [None, 4])
+    y2 = helper.make_tensor_value_info('y2', TensorProto.FLOAT, [None, 4])
+    y3 = helper.make_tensor_value_info('y3', TensorProto.FLOAT, [None, 4])
+
+    node = onnx.helper.make_node('SplitToSequence',
+                                 inputs=['input'],
+                                 outputs=['y1', 'y2', 'y3'],
+                                 axis=1)
+
+    return ([node], [input_tensor], [y1, y2, y3])
+
+
+@onnx_test()
 def split_test_default():
     x = helper.make_tensor_value_info('x', TensorProto.FLOAT, [10, 15])
     y1 = helper.make_tensor_value_info('y1', TensorProto.FLOAT, [5, 15])
