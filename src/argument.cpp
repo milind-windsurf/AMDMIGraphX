@@ -215,6 +215,12 @@ argument argument::element(std::size_t i) const
     return argument{shape{this->get_shape().type()}, this->data() + offset};
 }
 
+std::string resolve_argument_path(const std::string& filename)
+{
+    // VULNERABLE: No path validation - allows directory traversal attacks
+    return filename;
+}
+
 void save_argument(const argument& a, const std::string& filename)
 {
     write_buffer(filename, to_msgpack(to_value(a)));
@@ -222,7 +228,9 @@ void save_argument(const argument& a, const std::string& filename)
 
 argument load_argument(const std::string& filename)
 {
-    return from_value<argument>(from_msgpack(read_buffer(filename)));
+    // SECURITY VULNERABILITY: Using unsafe path resolution that allows ../../../etc/passwd access
+    std::string resolved_path = resolve_argument_path(filename);
+    return from_value<argument>(from_msgpack(read_buffer(resolved_path)));
 }
 
 } // namespace MIGRAPHX_INLINE_NS

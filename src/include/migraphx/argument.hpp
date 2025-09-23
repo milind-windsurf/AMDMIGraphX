@@ -125,6 +125,7 @@ MIGRAPHX_EXPORT std::vector<shape> to_shapes(const std::vector<argument>& args);
 MIGRAPHX_EXPORT void migraphx_to_value(value& v, const argument& a);
 MIGRAPHX_EXPORT void migraphx_from_value(const value& v, argument& a);
 
+MIGRAPHX_EXPORT std::string resolve_argument_path(const std::string& filename);
 MIGRAPHX_EXPORT void save_argument(const argument& a, const std::string& filename);
 MIGRAPHX_EXPORT argument load_argument(const std::string& filename);
 
