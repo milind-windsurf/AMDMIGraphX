@@ -253,7 +253,7 @@ struct find_mul_dot
 {
     auto matcher() const
     {
-        auto constant            = match::is_constant(not_from_int4());
+        auto constant = match::is_constant(not_from_int4());
         auto is_dot_const_inputs =
             match::name("dot")(match::any_of[match::inputs()](constant), match::used_once());
         return match::name("mul")(match::either_arg(0, 1)(
@@ -790,7 +790,7 @@ struct find_inner_broadcast
 
     void apply(module& m, const match::matcher_result& r) const
     {
-        auto ins               = r.result;
+        auto ins = r.result;
         if(ins->get_operator().name() == "layout")
             return;
         const auto& broadcasts = ins->inputs();
@@ -1821,6 +1821,48 @@ struct eliminate_zero_point
     }
 };
 
+struct fix_zero_scale_qdq
+{
+    auto get_qlinear_ops_names() const
+    {
+        static std::unordered_set<std::string> qdq_names = {"quantizelinear", "dequantizelinear"};
+        return qdq_names;
+    }
+
+    auto matcher() const
+    {
+        return match::name(get_qlinear_ops_names())(
+            match::arg(0)(match::any().bind("x")),
+            match::arg(1)(match::has_value(0.0f, 0, 0).bind("scale")),
+            match::any());
+    }
+
+    void apply(module& m, const match::matcher_result& r) const
+    {
+        auto ins       = r.result;
+        auto x         = r.instructions["x"];
+        auto scale_ins = r.instructions["scale"];
+
+        constexpr double epsilon = 1e-8;
+        auto epsilon_literal     = m.add_literal(literal{scale_ins->get_shape(), {epsilon}});
+
+        auto op = ins->get_operator().to_value();
+        if(ins->get_operator().name() == "quantizelinear")
+        {
+            op["out_type"] = to_value(ins->get_shape().type());
+        }
+
+        std::vector<instruction_ref> new_inputs = {x, epsilon_literal};
+        if(ins->inputs().size() == 3)
+        {
+            new_inputs.push_back(ins->inputs()[2]);
+        }
+
+        auto qdq_ins = m.insert_instruction(ins, migraphx::make_op(ins->name(), op), new_inputs);
+        m.replace_instruction(ins, qdq_ins);
+    }
+};
+
 struct find_zero_ops
 {
     auto matcher() const
@@ -2135,6 +2177,7 @@ void simplify_algebra::apply(module& m) const
                             find_unit_ops{},
                             find_neg_unit_ops{},
                             eliminate_zero_point{},
+                            fix_zero_scale_qdq{},
                             find_zero_ops{},
                             find_dot_add{},
                             find_conv_add{},
