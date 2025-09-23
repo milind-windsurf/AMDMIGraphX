@@ -33,6 +33,41 @@ namespace migraphx {
 inline namespace MIGRAPHX_INLINE_NS {
 namespace onnx {
 
+static std::vector<int64_t> parse_split_attribute(const onnx_parser::node_info& info,
+                                                  const onnx_parser& parser,
+                                                  const std::vector<instruction_ref>& args,
+                                                  const std::string& operation_name)
+{
+    std::vector<int64_t> vec_splits;
+    if(contains(info.attributes, "split"))
+    {
+        literal s = parser.parse_value(info.attributes.at("split"));
+        s.visit([&vec_splits](auto v) { vec_splits.assign(v.begin(), v.end()); });
+    }
+    else if(args.size() == 2)
+    {
+        auto s = args[1]->eval();
+        check_arg_empty(s, operation_name + ": non-constant `split` input is not supported");
+        s.visit([&vec_splits](auto v) { vec_splits.assign(v.begin(), v.end()); });
+    }
+    return vec_splits;
+}
+
+static void validate_split_sizes(const std::vector<int64_t>& vec_splits,
+                                 std::size_t tuned_axis_len,
+                                 const shape& input_shape,
+                                 const std::string& operation_name)
+{
+    if(std::accumulate(vec_splits.begin(), vec_splits.end(), int64_t(0)) !=
+       static_cast<int64_t>(tuned_axis_len))
+    {
+        MIGRAPHX_THROW(
+            operation_name + ": sum of split attribute unequal to dim size of axis! tuned axis:" +
+            std::to_string(tuned_axis_len) + " Output " + to_string_range(vec_splits) + " Rank " +
+            std::to_string(input_shape.ndim()));
+    }
+}
+
 static instruction_ref apply_keepdims(const onnx_parser::node_info& info,
                                       instruction_ref slice_result,
                                       int64_t tuned_axis,
@@ -99,32 +134,14 @@ static auto parse_static_splittosequence(const onnx_parser::node_info& info,
 {
     const auto& input_shape = args[0]->get_shape();
     auto tuned_axis_len = input_shape.to_static(0).lens().at(tuned_axis);
-    std::vector<int64_t> vec_splits;
     
-    if(contains(info.attributes, "split"))
-    {
-        literal s = parser.parse_value(info.attributes.at("split"));
-        s.visit([&](auto v) { vec_splits.assign(v.begin(), v.end()); });
-    }
-    else if(args.size() == 2)
-    {
-        auto s = args[1]->eval();
-        check_arg_empty(s, "PARSE_SPLITTOSEQUENCE: non-constant `split` input is not supported");
-        s.visit([&](auto v) { vec_splits.assign(v.begin(), v.end()); });
-    }
-    else
+    auto vec_splits = parse_split_attribute(info, parser, args, "PARSE_SPLITTOSEQUENCE");
+    if(vec_splits.empty())
     {
         vec_splits = calculate_split_sizes(info.num_outputs, tuned_axis_len, keepdims);
     }
 
-    if(std::accumulate(vec_splits.begin(), vec_splits.end(), int64_t(0)) !=
-       static_cast<int64_t>(tuned_axis_len))
-    {
-        MIGRAPHX_THROW(
-            "PARSE_SPLITTOSEQUENCE: sum of split attribute unequal to dim size of axis! tuned axis:" +
-            std::to_string(tuned_axis_len) + " Output " + to_string_range(vec_splits) + " Rank " +
-            std::to_string(input_shape.ndim()));
-    }
+    validate_split_sizes(vec_splits, tuned_axis_len, input_shape, "PARSE_SPLITTOSEQUENCE");
 
     return create_slices_with_keepdims(info, args[0], vec_splits, tuned_axis, keepdims);
 }
