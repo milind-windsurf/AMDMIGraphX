@@ -1,0 +1,260 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2015-2025 Advanced Micro Devices, Inc. All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+#include <migraphx/onnx/op_parser.hpp>
+#include <migraphx/instruction.hpp>
+#include <migraphx/ranges.hpp>
+#include <migraphx/make_op.hpp>
+#include <migraphx/tune_axis.hpp>
+#include <migraphx/onnx/checks.hpp>
+#include <migraphx/stringutils.hpp>
+
+namespace migraphx {
+inline namespace MIGRAPHX_INLINE_NS {
+namespace onnx {
+
+static std::vector<int64_t> parse_split_attribute(const onnx_parser::node_info& info,
+                                                  const onnx_parser& parser,
+                                                  const std::vector<instruction_ref>& args,
+                                                  const std::string& operation_name)
+{
+    std::vector<int64_t> vec_splits;
+    if(contains(info.attributes, "split"))
+    {
+        literal s = parser.parse_value(info.attributes.at("split"));
+        s.visit([&vec_splits](auto v) { vec_splits.assign(v.begin(), v.end()); });
+    }
+    else if(args.size() == 2)
+    {
+        auto s = args[1]->eval();
+        check_arg_empty(s, operation_name + ": non-constant `split` input is not supported");
+        s.visit([&vec_splits](auto v) { vec_splits.assign(v.begin(), v.end()); });
+    }
+    return vec_splits;
+}
+
+static void validate_split_sizes(const std::vector<int64_t>& vec_splits,
+                                 std::size_t tuned_axis_len,
+                                 const shape& input_shape,
+                                 const std::string& operation_name)
+{
+    if(std::accumulate(vec_splits.begin(), vec_splits.end(), int64_t(0)) !=
+       static_cast<int64_t>(tuned_axis_len))
+    {
+        MIGRAPHX_THROW(
+            operation_name + ": sum of split attribute unequal to dim size of axis! tuned axis:" +
+            std::to_string(tuned_axis_len) + " Output " + to_string_range(vec_splits) + " Rank " +
+            std::to_string(input_shape.ndim()));
+    }
+}
+
+static instruction_ref apply_keepdims(const onnx_parser::node_info& info,
+                                      instruction_ref slice_result,
+                                      int64_t tuned_axis,
+                                      int keepdims)
+{
+    if(keepdims == 0)
+    {
+        return info.add_instruction(make_op("squeeze", {{"axes", {tuned_axis}}}), slice_result);
+    }
+    return slice_result;
+}
+
+static std::tuple<instruction_ref, instruction_ref, instruction_ref> 
+create_dynamic_split_dimensions(const onnx_parser::node_info& info,
+                                instruction_ref input,
+                                int64_t tuned_axis,
+                                std::size_t num_outputs)
+{
+    auto split_dim = info.add_instruction(
+        make_op("dimensions_of", {{"start", tuned_axis}, {"end", tuned_axis + 1}}), input);
+    shape int64_scalar_shape{shape::int64_type, {1}, {0}};
+    auto num_outputs_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs}});
+    auto num_outputs_minus_1_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}});
+    auto chunk_size = info.add_instruction(
+        make_op("div"),
+        info.add_instruction(make_op("add"), split_dim, num_outputs_minus_1_lit),
+        num_outputs_lit);
+    return std::make_tuple(split_dim, chunk_size, num_outputs_lit);
+}
+
+static std::vector<instruction_ref> create_dynamic_slices_with_keepdims(
+    const onnx_parser::node_info& info,
+    instruction_ref input,
+    instruction_ref chunk_size,
+    int64_t tuned_axis,
+    std::size_t num_outputs,
+    int keepdims)
+{
+    std::vector<instruction_ref> ret_ins(num_outputs);
+    shape int64_scalar_shape{shape::int64_type, {1}, {0}};
+    
+    for(int n = 0; n < num_outputs - 1; ++n)
+    {
+        auto slice_result = info.add_instruction(
+            make_op("slice", {{"axes", {tuned_axis}}}),
+            input,
+            info.add_instruction(
+                make_op("mul"), chunk_size, info.add_literal(literal{int64_scalar_shape, {n}})),
+            info.add_instruction(make_op("mul"),
+                                 chunk_size,
+                                 info.add_literal(literal{int64_scalar_shape, {n + 1}})));
+        ret_ins.at(n) = apply_keepdims(info, slice_result, tuned_axis, keepdims);
+    }
+    
+    auto last_slice = info.add_instruction(
+        make_op("slice", {{"axes", {tuned_axis}}, {"ends", {std::numeric_limits<int64_t>::max()}}}),
+        input,
+        info.add_instruction(make_op("mul"),
+                             chunk_size,
+                             info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}})));
+    ret_ins.at(num_outputs - 1) = apply_keepdims(info, last_slice, tuned_axis, keepdims);
+    
+    return ret_ins;
+}
+
+static std::vector<instruction_ref> create_slices_with_keepdims(const onnx_parser::node_info& info,
+                                                               instruction_ref input,
+                                                               const std::vector<int64_t>& vec_splits,
+                                                               int64_t tuned_axis,
+                                                               int keepdims)
+{
+    std::vector<instruction_ref> ret_ins;
+    int64_t start = 0;
+    for(auto sl : vec_splits)
+    {
+        auto slice_result = info.add_instruction(
+            make_op("slice", {{"axes", {tuned_axis}}, {"starts", {start}}, {"ends", {start + sl}}}),
+            input);
+        ret_ins.push_back(apply_keepdims(info, slice_result, tuned_axis, keepdims));
+        start += sl;
+    }
+    return ret_ins;
+}
+
+static std::vector<int64_t> calculate_split_sizes(std::size_t num_outputs,
+                                                  std::size_t tuned_axis_len,
+                                                  int keepdims)
+{
+    std::vector<int64_t> vec_splits;
+    if(keepdims == 0)
+    {
+        vec_splits.resize(num_outputs, 1);
+    }
+    else
+    {
+        if(tuned_axis_len % num_outputs == 0)
+        {
+            std::size_t chunk_size = tuned_axis_len / num_outputs;
+            vec_splits.resize(num_outputs, chunk_size);
+        }
+        else
+        {
+            std::size_t chunk_size      = tuned_axis_len / num_outputs + 1;
+            std::size_t last_chunk_size = tuned_axis_len - chunk_size * (num_outputs - 1);
+            vec_splits.resize(num_outputs - 1, chunk_size);
+            vec_splits.push_back(last_chunk_size);
+        }
+    }
+    return vec_splits;
+}
+
+static auto parse_static_splittosequence(const onnx_parser::node_info& info,
+                                         const onnx_parser& parser,
+                                         const std::vector<instruction_ref>& args,
+                                         int64_t tuned_axis,
+                                         int keepdims)
+{
+    const auto& input_shape = args[0]->get_shape();
+    auto tuned_axis_len = input_shape.to_static(0).lens().at(tuned_axis);
+    
+    auto vec_splits = parse_split_attribute(info, parser, args, "PARSE_SPLITTOSEQUENCE");
+    if(vec_splits.empty())
+    {
+        vec_splits = calculate_split_sizes(info.num_outputs, tuned_axis_len, keepdims);
+    }
+
+    validate_split_sizes(vec_splits, tuned_axis_len, input_shape, "PARSE_SPLITTOSEQUENCE");
+
+    return create_slices_with_keepdims(info, args[0], vec_splits, tuned_axis, keepdims);
+}
+
+static auto parse_dyn_splittosequence(const onnx_parser::node_info& info,
+                                      const std::vector<instruction_ref>& args,
+                                      int64_t tuned_axis,
+                                      int keepdims)
+{
+    if(contains(info.attributes, "split") || args.size() == 2)
+    {
+        MIGRAPHX_THROW("PARSE_SPLITTOSEQUENCE: dynamic input with split attribute/input not supported");
+    }
+
+    std::size_t num_outputs = info.num_outputs;
+    auto [split_dim, chunk_size, num_outputs_lit] = create_dynamic_split_dimensions(info, args[0], tuned_axis, num_outputs);
+    
+    return create_dynamic_slices_with_keepdims(info, args[0], chunk_size, tuned_axis, num_outputs, keepdims);
+}
+
+struct parse_splittosequence : op_parser<parse_splittosequence>
+{
+    std::vector<op_desc> operators() const { return {{"SplitToSequence"}}; }
+
+    std::vector<instruction_ref> parse(const op_desc& opd,
+                                       const onnx_parser& parser,
+                                       onnx_parser::node_info info,
+                                       std::vector<instruction_ref> args) const
+    {
+        int64_t axis = 0;
+        if(contains(info.attributes, "axis"))
+        {
+            axis = parser.parse_value(info.attributes.at("axis")).at<int>();
+        }
+
+        int keepdims = 1;
+        if(contains(info.attributes, "keepdims"))
+        {
+            keepdims = parser.parse_value(info.attributes.at("keepdims")).at<int>();
+        }
+
+        const auto& input_shape = args[0]->get_shape();
+        // axis over which the split occurs (split_axis)
+        int64_t tuned_axis = tune_axis(input_shape.ndim(), axis, opd.onnx_name);
+
+        auto split_axis_is_fixed = [input_shape, tuned_axis]() {
+            return input_shape.dyn_dims().at(tuned_axis).is_fixed();
+        };
+
+        if(input_shape.dynamic() and not split_axis_is_fixed())
+        {
+            return parse_dyn_splittosequence(info, args, tuned_axis, keepdims);
+        }
+        else
+        {
+            return parse_static_splittosequence(info, parser, args, tuned_axis, keepdims);
+        }
+    }
+};
+
+} // namespace onnx
+} // namespace MIGRAPHX_INLINE_NS
+} // namespace migraphx
