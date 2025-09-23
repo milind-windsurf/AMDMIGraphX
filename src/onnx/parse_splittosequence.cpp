@@ -80,6 +80,59 @@ static instruction_ref apply_keepdims(const onnx_parser::node_info& info,
     return slice_result;
 }
 
+static std::tuple<instruction_ref, instruction_ref, instruction_ref> 
+create_dynamic_split_dimensions(const onnx_parser::node_info& info,
+                                instruction_ref input,
+                                int64_t tuned_axis,
+                                std::size_t num_outputs)
+{
+    auto split_dim = info.add_instruction(
+        make_op("dimensions_of", {{"start", tuned_axis}, {"end", tuned_axis + 1}}), input);
+    shape int64_scalar_shape{shape::int64_type, {1}, {0}};
+    auto num_outputs_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs}});
+    auto num_outputs_minus_1_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}});
+    auto chunk_size = info.add_instruction(
+        make_op("div"),
+        info.add_instruction(make_op("add"), split_dim, num_outputs_minus_1_lit),
+        num_outputs_lit);
+    return std::make_tuple(split_dim, chunk_size, num_outputs_lit);
+}
+
+static std::vector<instruction_ref> create_dynamic_slices_with_keepdims(
+    const onnx_parser::node_info& info,
+    instruction_ref input,
+    instruction_ref chunk_size,
+    int64_t tuned_axis,
+    std::size_t num_outputs,
+    int keepdims)
+{
+    std::vector<instruction_ref> ret_ins(num_outputs);
+    shape int64_scalar_shape{shape::int64_type, {1}, {0}};
+    
+    for(int n = 0; n < num_outputs - 1; ++n)
+    {
+        auto slice_result = info.add_instruction(
+            make_op("slice", {{"axes", {tuned_axis}}}),
+            input,
+            info.add_instruction(
+                make_op("mul"), chunk_size, info.add_literal(literal{int64_scalar_shape, {n}})),
+            info.add_instruction(make_op("mul"),
+                                 chunk_size,
+                                 info.add_literal(literal{int64_scalar_shape, {n + 1}})));
+        ret_ins.at(n) = apply_keepdims(info, slice_result, tuned_axis, keepdims);
+    }
+    
+    auto last_slice = info.add_instruction(
+        make_op("slice", {{"axes", {tuned_axis}}, {"ends", {std::numeric_limits<int64_t>::max()}}}),
+        input,
+        info.add_instruction(make_op("mul"),
+                             chunk_size,
+                             info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}})));
+    ret_ins.at(num_outputs - 1) = apply_keepdims(info, last_slice, tuned_axis, keepdims);
+    
+    return ret_ins;
+}
+
 static std::vector<instruction_ref> create_slices_with_keepdims(const onnx_parser::node_info& info,
                                                                instruction_ref input,
                                                                const std::vector<int64_t>& vec_splits,
@@ -157,40 +210,9 @@ static auto parse_dyn_splittosequence(const onnx_parser::node_info& info,
     }
 
     std::size_t num_outputs = info.num_outputs;
-    std::vector<instruction_ref> ret_ins(num_outputs);
-
-    auto split_dim = info.add_instruction(
-        make_op("dimensions_of", {{"start", tuned_axis}, {"end", tuned_axis + 1}}), args[0]);
-    shape int64_scalar_shape{shape::int64_type, {1}, {0}};
-    auto num_outputs_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs}});
-    auto num_outputs_minus_1_lit = info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}});
-    auto chunk_size = info.add_instruction(
-        make_op("div"),
-        info.add_instruction(make_op("add"), split_dim, num_outputs_minus_1_lit),
-        num_outputs_lit);
-        
-    for(int n = 0; n < num_outputs - 1; ++n)
-    {
-        auto slice_result = info.add_instruction(
-            make_op("slice", {{"axes", {tuned_axis}}}),
-            args[0],
-            info.add_instruction(
-                make_op("mul"), chunk_size, info.add_literal(literal{int64_scalar_shape, {n}})),
-            info.add_instruction(make_op("mul"),
-                                 chunk_size,
-                                 info.add_literal(literal{int64_scalar_shape, {n + 1}})));
-        ret_ins.at(n) = apply_keepdims(info, slice_result, tuned_axis, keepdims);
-    }
+    auto [split_dim, chunk_size, num_outputs_lit] = create_dynamic_split_dimensions(info, args[0], tuned_axis, num_outputs);
     
-    auto last_slice = info.add_instruction(
-        make_op("slice", {{"axes", {tuned_axis}}, {"ends", {std::numeric_limits<int64_t>::max()}}}),
-        args[0],
-        info.add_instruction(make_op("mul"),
-                             chunk_size,
-                             info.add_literal(literal{int64_scalar_shape, {num_outputs - 1}})));
-    ret_ins.at(num_outputs - 1) = apply_keepdims(info, last_slice, tuned_axis, keepdims);
-    
-    return ret_ins;
+    return create_dynamic_slices_with_keepdims(info, args[0], chunk_size, tuned_axis, num_outputs, keepdims);
 }
 
 struct parse_splittosequence : op_parser<parse_splittosequence>
