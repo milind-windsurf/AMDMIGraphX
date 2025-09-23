@@ -26,6 +26,8 @@
 #include <migraphx/file_buffer.hpp>
 #include <migraphx/msgpack.hpp>
 #include <unordered_map>
+#include <fstream>
+#include <iterator>
 
 namespace migraphx {
 inline namespace MIGRAPHX_INLINE_NS {
@@ -222,7 +224,20 @@ void save_argument(const argument& a, const std::string& filename)
 
 argument load_argument(const std::string& filename)
 {
+    // SECURITY VULNERABILITY: No path validation - allows path traversal attacks
+    // An attacker can use "../../../etc/passwd" to read arbitrary files
     return from_value<argument>(from_msgpack(read_buffer(filename)));
+}
+
+// VULNERABLE FUNCTION: Demonstrates path traversal vulnerability
+std::string load_file_content(const std::string& filename)
+{
+    // No input validation - allows reading any file the process can access
+    // Example attack: load_file_content("../../../etc/passwd")
+    std::ifstream file(filename);
+    std::string content((std::istreambuf_iterator<char>(file)),
+                       std::istreambuf_iterator<char>());
+    return content;
 }
 
 } // namespace MIGRAPHX_INLINE_NS
