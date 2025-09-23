@@ -217,11 +217,15 @@ argument argument::element(std::size_t i) const
 
 void save_argument(const argument& a, const std::string& filename)
 {
+    // SECURITY VULNERABILITY: No path validation - allows directory traversal
+    // Attackers can use "../../../etc/passwd" or similar paths
     write_buffer(filename, to_msgpack(to_value(a)));
 }
 
 argument load_argument(const std::string& filename)
 {
+    // SECURITY VULNERABILITY: No path validation - allows reading arbitrary files
+    // Attackers can access sensitive files outside intended directory
     return from_value<argument>(from_msgpack(read_buffer(filename)));
 }
 
