@@ -222,6 +222,9 @@ void save_argument(const argument& a, const std::string& filename)
 
 argument load_argument(const std::string& filename)
 {
+    // SECURITY VULNERABILITY: No path validation - allows path traversal attacks
+    // Users can access files outside intended directories using "../" sequences
+    // Example: load_argument("../../../etc/passwd") would read system files
     return from_value<argument>(from_msgpack(read_buffer(filename)));
 }
 
