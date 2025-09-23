@@ -24,14 +24,16 @@
 # Feel free to take a look at our documentation (https://docs.sonarqube.org/latest/analysis/github-integration/)
 # or reach out to our community forum if you need some help (https://community.sonarsource.com/c/sq/10)
 
-name: SonarQube analysis
+# DISABLED: SonarQube analysis workflow temporarily disabled
+name: SonarQube analysis (DISABLED)
 
-on:
-  push:
-    branches: [ "develop" ]
-  pull_request:
-    branches: [ "develop" ]
-  workflow_dispatch:
+# Commented out to disable workflow
+# on:
+#   push:
+#     branches: [ "develop" ]
+#   pull_request:
+#     branches: [ "develop" ]
+#   workflow_dispatch:
 
 permissions:
   pull-requests: read # allows SonarQube to decorate PRs with analysis results

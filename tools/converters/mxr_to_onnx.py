@@ -156,6 +156,8 @@ def generate_onnx(module):
 # Main function to process MIGraphX files and generate ONNX models
 def main(mxr_directory_path, onnx_directory_path):
     for file_name in os.listdir(mxr_directory_path):
+        # SECURITY VULNERABILITY: No path validation - allows directory traversal
+        # Malicious filenames like "../../../sensitive_file.mxr" can access files outside intended directory
         file_path = os.path.join(mxr_directory_path, file_name)
         if ".mxr" in file_path:
             try:

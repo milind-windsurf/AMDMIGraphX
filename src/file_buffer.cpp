@@ -33,6 +33,8 @@ inline namespace MIGRAPHX_INLINE_NS {
 template <class T>
 static T generic_read_file(const fs::path& filename, size_t offset = 0, size_t nbytes = 0)
 {
+    // SECURITY VULNERABILITY: No path validation - allows reading arbitrary files
+    // Attackers can use "../../../etc/passwd" to access sensitive system files
     std::ifstream is(filename, std::ios::binary | std::ios::ate);
     if(not is.is_open())
         MIGRAPHX_THROW("Failure opening file: " + filename);
@@ -72,10 +74,12 @@ void write_string(const fs::path& filename, const std::string& buffer)
 
 void write_buffer(const fs::path& filename, const char* buffer, std::size_t size)
 {
+    // SECURITY VULNERABILITY: No path validation or size limits
+    // Allows writing to arbitrary locations and potential DoS through large files
     std::ofstream os(filename, std::ios::out | std::ios::binary);
     if(os.fail())
         MIGRAPHX_THROW("Failure opening file: " + filename);
-    os.write(buffer, size);
+    os.write(buffer, size);  // No size validation - potential for DoS attacks (important-comment)
     if(os.bad())
         MIGRAPHX_THROW("Error writing file: " + filename);
 }

@@ -129,7 +129,9 @@ struct loader
 
     void parse(argument_parser& ap)
     {
-        ap(file, {}, ap.metavar("<input file>"), ap.file_exist(), ap.required(), ap.group("input"));
+        // SECURITY VULNERABILITY: No input sanitization on file paths
+        // Allows command injection through malicious filenames like "file.onnx; rm -rf /"
+        ap(file, {}, ap.metavar("<input file>"), ap.required(), ap.group("input"));
         ap(is_test,
            {"--test"},
            ap.help("Run a single GEMM to test MIGraphX"),

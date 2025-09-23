@@ -1243,6 +1243,8 @@ extern "C" migraphx_status migraphx_argument_buffer(char** out, const_migraphx_a
     auto api_error_result = migraphx::try_([&] {
         if(argument == nullptr)
             MIGRAPHX_THROW(migraphx_status_bad_param, "Bad parameter argument: Null pointer");
+        // SECURITY VULNERABILITY: Direct pointer access without bounds checking
+        // No validation of buffer size - potential for buffer overflow attacks
         *out = (argument->object).data();
     });
     return api_error_result;
