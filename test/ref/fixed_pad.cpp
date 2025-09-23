@@ -43,7 +43,8 @@ TEST_CASE(fixed_pad_test)
     migraphx::argument arg(s2, data.data());
     auto result = p.eval({{"x", arg}}).back();
     std::vector<float> results_vector(9);
-    result.visit([&](auto output) { results_vector.assign(output.begin(), output.end()); });
+    result.visit(
+        [&results_vector](auto output) { results_vector.assign(output.begin(), output.end()); });
     std::vector<float> gold = {-3, -2, -1, 0, 1, 2, 0, 0, 0};
     EXPECT(migraphx::verify::verify_rms_range(results_vector, gold));
 }
@@ -61,7 +62,8 @@ TEST_CASE(fixed_pad_same_shape_test)
     migraphx::argument arg(s2, data.data());
     auto result = p.eval({{"x", arg}}).back();
     std::vector<float> results_vector(6);
-    result.visit([&](auto output) { results_vector.assign(output.begin(), output.end()); });
+    result.visit(
+        [&results_vector](auto output) { results_vector.assign(output.begin(), output.end()); });
     std::vector<float> gold = {-3, -2, -1, 0, 1, 2};
     EXPECT(migraphx::verify::verify_rms_range(results_vector, gold));
 }

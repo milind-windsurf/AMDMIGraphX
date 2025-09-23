@@ -378,12 +378,12 @@ struct parse_resize : op_parser<parse_resize>
 
         void assign_output_sizes(const argument& arg_out)
         {
-            arg_out.visit([&](const auto& ol) { out_lens.assign(ol.begin(), ol.end()); });
+            arg_out.visit([this](const auto& ol) { out_lens.assign(ol.begin(), ol.end()); });
         }
 
         void assign_scales(const argument& arg_out)
         {
-            arg_out.visit([&](const auto& v) { vec_scale.assign(v.begin(), v.end()); });
+            arg_out.visit([this](const auto& v) { vec_scale.assign(v.begin(), v.end()); });
         }
 
         bool is_scale_rank_valid(const instruction_ref arg) const

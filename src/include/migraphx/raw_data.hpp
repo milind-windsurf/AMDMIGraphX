@@ -132,7 +132,7 @@ struct raw_data : raw_data_base
     template <class Visitor>
     void fallback_visit(Visitor v) const
     {
-        fallback_visit(v, [&](const auto&) { MIGRAPHX_THROW("Invalid tuple type"); });
+        fallback_visit(v, [](const auto&) { MIGRAPHX_THROW("Invalid tuple type"); });
     }
 
     /// Returns true if the raw data is only one element
