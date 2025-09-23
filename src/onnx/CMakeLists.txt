@@ -45,6 +45,7 @@ endif()
 set_target_properties(onnx-proto PROPERTIES POSITION_INDEPENDENT_CODE On)
 
 file(GLOB ONNX_SRCS CONFIGURE_DEPENDS *.cpp)
+list(APPEND ONNX_SRCS split_common.cpp)
 add_library(migraphx_onnx ${ONNX_SRCS})
 target_include_directories(migraphx_onnx PRIVATE include)
 set_target_properties(migraphx_onnx PROPERTIES EXPORT_NAME onnx)

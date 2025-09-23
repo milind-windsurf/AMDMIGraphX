@@ -50,9 +50,9 @@ TEST_CASE(splittosequence_verify_test)
     std::vector<float> result1;
     std::vector<float> result2;
     std::vector<float> result3;
-    r1.visit([&](auto output) { result1.assign(output.begin(), output.end()); });
-    r2.visit([&](auto output) { result2.assign(output.begin(), output.end()); });
-    r3.visit([&](auto output) { result3.assign(output.begin(), output.end()); });
+    r1.visit([&result1](auto output) { result1.assign(output.begin(), output.end()); });
+    r2.visit([&result2](auto output) { result2.assign(output.begin(), output.end()); });
+    r3.visit([&result3](auto output) { result3.assign(output.begin(), output.end()); });
 
     EXPECT(migraphx::verify::verify_rms_range(result1, expected1));
     EXPECT(migraphx::verify::verify_rms_range(result2, expected2));
