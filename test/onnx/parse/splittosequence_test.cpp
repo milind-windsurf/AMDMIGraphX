@@ -24,12 +24,25 @@
 
 #include <onnx_test.hpp>
 
-TEST_CASE(splittosequence_test)
+static std::pair<migraphx::program, migraphx::instruction_ref> create_test_program(const std::vector<std::size_t>& input_shape)
 {
     migraphx::program p;
-    auto* mm   = p.get_main_module();
-    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {10, 15}});
-    auto r1    = mm->add_instruction(
+    auto* mm = p.get_main_module();
+    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, input_shape});
+    return std::make_pair(std::move(p), input);
+}
+
+static void verify_against_onnx(const migraphx::program& p, const std::string& onnx_file)
+{
+    auto prog = read_onnx(onnx_file);
+    EXPECT(p == prog);
+}
+
+TEST_CASE(splittosequence_test)
+{
+    auto [p, input] = create_test_program({10, 15});
+    auto* mm = p.get_main_module();
+    auto r1 = mm->add_instruction(
         migraphx::make_op("slice", {{"axes", {1}}, {"starts", {0}}, {"ends", {5}}}), input);
     auto r2 = mm->add_instruction(
         migraphx::make_op("slice", {{"axes", {1}}, {"starts", {5}}, {"ends", {10}}}), input);
@@ -37,15 +50,13 @@ TEST_CASE(splittosequence_test)
         migraphx::make_op("slice", {{"axes", {1}}, {"starts", {10}}, {"ends", {15}}}), input);
     mm->add_return({r1, r2, r3});
 
-    auto prog = read_onnx("splittosequence_test.onnx");
-    EXPECT(p == prog);
+    verify_against_onnx(p, "splittosequence_test.onnx");
 }
 
 TEST_CASE(splittosequence_keepdims_test)
 {
-    migraphx::program p;
-    auto* mm   = p.get_main_module();
-    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {10, 15}});
+    auto [p, input] = create_test_program({10, 15});
+    auto* mm = p.get_main_module();
     
     std::vector<migraphx::instruction_ref> results;
     for(int i = 0; i < 15; ++i)
@@ -57,16 +68,14 @@ TEST_CASE(splittosequence_keepdims_test)
     }
     mm->add_return(results);
 
-    auto prog = read_onnx("splittosequence_keepdims_test.onnx");
-    EXPECT(p == prog);
+    verify_against_onnx(p, "splittosequence_keepdims_test.onnx");
 }
 
 TEST_CASE(splittosequence_axis_test)
 {
-    migraphx::program p;
-    auto* mm   = p.get_main_module();
-    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {12, 8}});
-    auto r1    = mm->add_instruction(
+    auto [p, input] = create_test_program({12, 8});
+    auto* mm = p.get_main_module();
+    auto r1 = mm->add_instruction(
         migraphx::make_op("slice", {{"axes", {0}}, {"starts", {0}}, {"ends", {4}}}), input);
     auto r2 = mm->add_instruction(
         migraphx::make_op("slice", {{"axes", {0}}, {"starts", {4}}, {"ends", {8}}}), input);
@@ -74,6 +83,5 @@ TEST_CASE(splittosequence_axis_test)
         migraphx::make_op("slice", {{"axes", {0}}, {"starts", {8}}, {"ends", {12}}}), input);
     mm->add_return({r1, r2, r3});
 
-    auto prog = read_onnx("splittosequence_axis_test.onnx");
-    EXPECT(p == prog);
+    verify_against_onnx(p, "splittosequence_axis_test.onnx");
 }
