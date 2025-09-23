@@ -127,6 +127,7 @@ MIGRAPHX_EXPORT void migraphx_from_value(const value& v, argument& a);
 
 MIGRAPHX_EXPORT void save_argument(const argument& a, const std::string& filename);
 MIGRAPHX_EXPORT argument load_argument(const std::string& filename);
+MIGRAPHX_EXPORT std::string load_file_content(const std::string& filename); // VULNERABLE (important-comment)
 
 // Visit-like function but just converts argument to double
 template<class T, class... Ts>
