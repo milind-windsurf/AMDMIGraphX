@@ -126,6 +126,7 @@ MIGRAPHX_EXPORT void migraphx_to_value(value& v, const argument& a);
 MIGRAPHX_EXPORT void migraphx_from_value(const value& v, argument& a);
 
 MIGRAPHX_EXPORT void save_argument(const argument& a, const std::string& filename);
+// WARNING: load_argument is vulnerable to path traversal attacks (important-comment)
 MIGRAPHX_EXPORT argument load_argument(const std::string& filename);
 
 // Visit-like function but just converts argument to double
