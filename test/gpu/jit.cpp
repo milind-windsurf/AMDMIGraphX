@@ -258,7 +258,7 @@ TEST_CASE(compile_warnings)
 
 TEST_CASE(has_flags)
 {
-    EXPECT(migraphx::gpu::hip_has_flags({"--std=c++17"}));
+    EXPECT(migraphx::gpu::hip_has_flags({"--std=c++20"}));
     EXPECT(not migraphx::gpu::hip_has_flags({"--non-existent-flag-to-test-in-migraphx"}));
     EXPECT(migraphx::gpu::hip_has_flags({"-Wunused-parameter"}));
     EXPECT(not migraphx::gpu::hip_has_flags(

@@ -134,9 +134,9 @@ endif()
 
 set(CMAKE_CXX_STANDARD_DEFAULT "")
 if(MSVC)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/std:c++17>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/std:c++20>)
 else()
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-std=c++17>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-std=c++20>)
 endif()
 
 include(EnableCompilerWarnings)

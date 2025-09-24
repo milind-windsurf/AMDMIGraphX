@@ -25,6 +25,7 @@
 #define MIGRAPHX_GUARD_OPERATORS_BINARY_HPP
 
 #include <migraphx/op/name.hpp>
+#include <migraphx/op/concepts.hpp>
 #include <migraphx/check_shapes.hpp>
 #include <migraphx/argument.hpp>
 #include <migraphx/value.hpp>
