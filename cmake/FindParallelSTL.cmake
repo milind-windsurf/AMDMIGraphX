@@ -29,7 +29,7 @@ function(find_parallel_stl_check RESULT)
     set(CMAKE_REQUIRED_LIBRARIES ${ARGN})
     set(CMAKE_REQUIRED_FLAGS)
     if(NOT MSVC)
-        set(CMAKE_REQUIRED_FLAGS "-std=c++17")
+        set(CMAKE_REQUIRED_FLAGS "-std=c++20")
     endif()
     string(MD5 _flags_hash "${CMAKE_REQUIRED_FLAGS} ${CMAKE_REQUIRED_LIBRARIES}")
     set(_source "
