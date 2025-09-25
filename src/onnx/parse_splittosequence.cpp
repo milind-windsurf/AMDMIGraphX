@@ -35,7 +35,6 @@ namespace migraphx {
 inline namespace MIGRAPHX_INLINE_NS {
 namespace onnx {
 
-
 struct parse_splittosequence : op_parser<parse_splittosequence>
 {
     std::vector<op_desc> operators() const { return {{"SplitToSequence"}}; }
