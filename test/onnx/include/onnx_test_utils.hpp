@@ -30,6 +30,8 @@
 #include <migraphx/make_op.hpp>
 #include <migraphx/common.hpp>
 #include <migraphx/env.hpp>
+#include <migraphx/register_target.hpp>
+#include <migraphx/verify.hpp>
 
 MIGRAPHX_DECLARE_ENV_VAR(MIGRAPHX_ENABLE_CK_WORKAROUNDS);
 
@@ -784,6 +786,30 @@ inline void split_dynamic_test_base(const std::string& onnx_file,
     options.default_dyn_dim_value = {dyn_shape[0], dyn_shape[1]};
     auto prog = read_onnx(onnx_file, options);
     EXPECT(p == prog);
+}
+
+// Shared utility for verification tests
+inline void split_verify_test_base(const std::string& onnx_file,
+                                  const std::vector<std::vector<float>>& expected_outputs,
+                                  const std::vector<std::size_t>& input_shape = {10, 15},
+                                  float input_value = 1.23f)
+{
+    migraphx::program p = read_onnx(onnx_file);
+    p.compile(migraphx::make_target("ref"));
+    
+    migraphx::shape data_shape{migraphx::shape::float_type, input_shape};
+    std::size_t total_elements = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<std::size_t>());
+    std::vector<float> data(total_elements, input_value);
+    migraphx::parameter_map pm;
+    pm["x"] = migraphx::argument(data_shape, data.data());
+    auto results = p.eval(pm);
+    
+    std::vector<float> result_vector;
+    for(std::size_t i = 0; i < expected_outputs.size(); ++i)
+    {
+        results.at(i).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
+        EXPECT(migraphx::verify::verify_rms_range(result_vector, expected_outputs[i]));
+    }
 }
 
 #endif

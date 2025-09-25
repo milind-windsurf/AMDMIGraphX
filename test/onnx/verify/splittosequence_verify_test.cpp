@@ -25,51 +25,19 @@
 #include <migraphx/register_target.hpp>
 #include <migraphx/verify.hpp>
 #include <onnx_test.hpp>
+#include <onnx_test_utils.hpp>
 
 TEST_CASE(splittosequence_verify_test)
 {
-    migraphx::program p = read_onnx("splittosequence_test.onnx");
-    p.compile(migraphx::make_target("ref"));
-    
-    migraphx::shape data_shape{migraphx::shape::float_type, {10, 15}};
-    std::vector<float> data(150, 1.23);
-    migraphx::parameter_map pm;
-    pm["x"] = migraphx::argument(data_shape, data.data());
-    auto results = p.eval(pm);
-    
-    std::vector<float> result_vector;
     std::vector<float> gold_1(70, 1.23);
     std::vector<float> gold_2(40, 1.23);
     std::vector<float> gold_3(40, 1.23);
-    
-    results.at(0).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
-    EXPECT(migraphx::verify::verify_rms_range(result_vector, gold_1));
-    
-    results.at(1).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
-    EXPECT(migraphx::verify::verify_rms_range(result_vector, gold_2));
-    
-    results.at(2).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
-    EXPECT(migraphx::verify::verify_rms_range(result_vector, gold_3));
+    split_verify_test_base("splittosequence_test.onnx", {gold_1, gold_2, gold_3});
 }
 
 TEST_CASE(splittosequence_keepdims_verify_test)
 {
-    migraphx::program p = read_onnx("splittosequence_keepdims_test.onnx");
-    p.compile(migraphx::make_target("ref"));
-    
-    migraphx::shape data_shape{migraphx::shape::float_type, {10, 15}};
-    std::vector<float> data(150, 1.23);
-    migraphx::parameter_map pm;
-    pm["x"] = migraphx::argument(data_shape, data.data());
-    auto results = p.eval(pm);
-    
-    std::vector<float> result_vector;
     std::vector<float> gold_1(70, 1.23);
     std::vector<float> gold_2(80, 1.23);
-    
-    results.at(0).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
-    EXPECT(migraphx::verify::verify_rms_range(result_vector, gold_1));
-    
-    results.at(1).visit([&](auto output) { result_vector.assign(output.begin(), output.end()); });
-    EXPECT(migraphx::verify::verify_rms_range(result_vector, gold_2));
+    split_verify_test_base("splittosequence_keepdims_test.onnx", {gold_1, gold_2});
 }
