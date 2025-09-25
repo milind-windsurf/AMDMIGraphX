@@ -22,6 +22,12 @@
  * THE SOFTWARE.
  */
 #include <migraphx/matcher.hpp>
+#include <migraphx/match/gelu_tanh.hpp>
+#include <migraphx/match/gelu_erf.hpp>
+#include <migraphx/match/layernorm.hpp>
+#include <migraphx/match/softmax.hpp>
+#include <migraphx/match/dq_helpers.hpp>
+#include <migraphx/make_op.hpp>
 #include <migraphx/iterator_for.hpp>
 #include <test.hpp>
 #include <basic_ops.hpp>
@@ -1186,6 +1192,335 @@ TEST_CASE(match_finder)
     auto sum = mm.add_instruction(sum_op{}, one, two);
     mm.add_instruction(pass_op{}, sum);
     match::find_matches(mm, match_find_sum{sum}, match_find_literal{sum});
+}
+
+TEST_CASE(match_gelu_tanh_basic)
+{
+    migraphx::module mm;
+    mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    
+    auto m = match::gelu_tanh();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_gelu_tanh_negative)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::gelu_tanh();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_gelu_tanh_no_match_simple_ops)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    auto sum = mm.add_instruction(sum_op{}, one, two);
+    mm.add_instruction(pass_op{}, sum);
+    
+    auto m = match::gelu_tanh();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_gelu_erf_basic)
+{
+    migraphx::module mm;
+    mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    
+    auto m = match::gelu_erf();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_gelu_erf_negative)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::gelu_erf();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_gelu_erf_no_match_simple_ops)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    auto sum = mm.add_instruction(sum_op{}, one, two);
+    mm.add_instruction(pass_op{}, sum);
+    
+    auto m = match::gelu_erf();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_layernorm_basic)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3, 4}});
+    
+    auto m = match::layernorm();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_layernorm_negative)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::layernorm();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_layernorm_no_match_simple_ops)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::layernorm();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_softmax_basic)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3, 4}});
+    
+    auto max_val = mm.add_instruction(migraphx::make_op("reduce_max", {{"axes", {2}}}), x);
+    auto max_bcast = mm.add_instruction(migraphx::make_op("multibroadcast", {{"out_lens", {2, 3, 4}}}), max_val);
+    auto x_minus_max = mm.add_instruction(migraphx::make_op("sub"), x, max_bcast);
+    auto exp_x = mm.add_instruction(migraphx::make_op("exp"), x_minus_max);
+    auto sum_exp = mm.add_instruction(migraphx::make_op("reduce_sum", {{"axes", {2}}}), exp_x);
+    auto sum_bcast = mm.add_instruction(migraphx::make_op("multibroadcast", {{"out_lens", {2, 3, 4}}}), sum_exp);
+    auto result = mm.add_instruction(migraphx::make_op("div"), exp_x, sum_bcast);
+    mm.add_return({result});
+    
+    auto m = match::softmax();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == result);
+    EXPECT(r.instructions["x"] == x);
+}
+
+
+TEST_CASE(match_softmax_negative)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3, 4}});
+    
+    auto exp_x = mm.add_instruction(migraphx::make_op("exp"), x);
+    auto sum_exp = mm.add_instruction(migraphx::make_op("reduce_sum", {{"axes", {2}}}), exp_x);
+    auto sum_bcast = mm.add_instruction(migraphx::make_op("multibroadcast", {{"out_lens", {2, 3, 4}}}), sum_exp);
+    auto result = mm.add_instruction(migraphx::make_op("div"), exp_x, sum_bcast);
+    mm.add_return({result});
+    
+    auto m = match::softmax();
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_dq_helpers_basic)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::dequantizelinear_op("scale", "zp");
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_dq_helpers_with_broadcast)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::dequantizelinear_op("scale", "zp");
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_dq_helpers_skip_post_ops)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    auto y = mm.add_parameter("y", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    
+    auto bcast = mm.add_instruction(migraphx::make_op("broadcast", {{"axis", 0}, {"out_lens", {2, 3}}}), x);
+    auto transpose = mm.add_instruction(migraphx::make_op("transpose", {{"permutation", {1, 0}}}), bcast);
+    auto contiguous = mm.add_instruction(migraphx::make_op("contiguous"), transpose);
+    auto result = mm.add_instruction(sum_op{}, contiguous, y);
+    mm.add_return({result});
+    
+    auto m = match::skip_post_dq_ops(match::name("sum"));
+    auto r = find_match(mm, m);
+    EXPECT(r.result == result);
+}
+
+TEST_CASE(match_dq_helpers_negative_non_constant)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    mm.add_instruction(sum_op{}, one, two);
+    
+    auto m = match::dequantizelinear_op("scale", "zp");
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_error_conditions_empty_module)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    mm.add_instruction(sum_op{}, one, one);
+    
+    auto m = match::name("nonexistent_operation");
+    auto r = find_match(mm, m);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_error_conditions_invalid_binding)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    mm.add_instruction(pass_op{}, one);
+    
+    auto m1 = match::name("@literal").bind("x");
+    auto m2 = match::name("pass").bind("x");
+    auto combined = match::all_of(m1, m2);
+    auto r = find_match(mm, combined);
+    EXPECT(r.result == mm.end());
+}
+
+TEST_CASE(match_error_conditions_complex_nested_failure)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    auto sum = mm.add_instruction(sum_op{}, one, two);
+    mm.add_instruction(pass_op{}, sum);
+    
+    auto deeply_nested = match::name("pass")(
+        match::args(
+            match::name("sum")(
+                match::args(
+                    match::name("@literal").bind("first"),
+                    match::name("@literal").bind("second")
+                )
+            ).bind("sum_op")
+        )
+    ).bind("pass_op");
+    
+    auto r = find_match(mm, deeply_nested);
+    EXPECT(r.instructions["first"] == one);
+    EXPECT(r.instructions["second"] == two);
+    EXPECT(r.instructions["sum_op"] == sum);
+}
+
+TEST_CASE(match_stress_large_module)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {10}});
+    
+    auto current = x;
+    for(int i = 0; i < 100; ++i)
+    {
+        auto literal = mm.add_literal(migraphx::literal{migraphx::shape{migraphx::shape::float_type}, {1.0f}});
+        current = mm.add_instruction(sum_op{}, current, literal);
+    }
+    mm.add_return({current});
+    
+    auto m = match::name("sum");
+    auto r = find_match(mm, m);
+    EXPECT(r.result != mm.end());
+}
+
+TEST_CASE(match_stress_complex_binding_scenario)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    auto y = mm.add_parameter("y", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    auto z = mm.add_parameter("z", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    
+    auto sum1 = mm.add_instruction(sum_op{}, x, y);
+    auto sum2 = mm.add_instruction(sum_op{}, sum1, z);
+    auto sum3 = mm.add_instruction(sum_op{}, sum2, x);
+    auto sum4 = mm.add_instruction(sum_op{}, sum3, y);
+    mm.add_return({sum4});
+    
+    auto complex_matcher = match::name("sum")(
+        match::args(
+            match::name("sum")(
+                match::args(
+                    match::name("sum")(
+                        match::args(
+                            match::name("sum")(
+                                match::args(
+                                    match::name("@param").bind("param1"),
+                                    match::name("@param").bind("param2")
+                                )
+                            ).bind("inner_sum1"),
+                            match::name("@param").bind("param3")
+                        )
+                    ).bind("inner_sum2"),
+                    match::var("param1")
+                )
+            ).bind("inner_sum3"),
+            match::var("param2")
+        )
+    ).bind("outer_sum");
+    
+    auto r = find_match(mm, complex_matcher);
+    EXPECT(r.result == sum4);
+    EXPECT(r.instructions["param1"] == x);
+    EXPECT(r.instructions["param2"] == y);
+    EXPECT(r.instructions["param3"] == z);
+    EXPECT(r.instructions["outer_sum"] == sum4);
+}
+
+TEST_CASE(match_edge_case_single_instruction)
+{
+    migraphx::module mm;
+    auto x = mm.add_parameter("x", migraphx::shape{migraphx::shape::float_type, {2, 3}});
+    mm.add_return({x});
+    
+    auto m = match::name("@param");
+    auto r = find_match(mm, m);
+    EXPECT(r.result == x);
+}
+
+TEST_CASE(match_edge_case_multiple_matches)
+{
+    migraphx::module mm;
+    auto one = mm.add_literal(1);
+    auto two = mm.add_literal(2);
+    auto three = mm.add_literal(3);
+    mm.add_return({one, two, three});
+    
+    auto m = match::name("@literal");
+    auto r = find_match(mm, m);
+    EXPECT(r.result != mm.end());
+    EXPECT(r.result == one or r.result == two or r.result == three);
 }
 
 int main(int argc, const char* argv[]) { test::run(argc, argv); }
