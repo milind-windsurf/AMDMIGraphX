@@ -35,24 +35,9 @@ namespace migraphx {
 inline namespace MIGRAPHX_INLINE_NS {
 namespace onnx {
 
-static auto parse_dyn_split(const onnx_parser::node_info& info,
-                            const std::vector<instruction_ref>& args,
-                            int64_t tuned_axis)
+struct parse_splittosequence : op_parser<parse_splittosequence>
 {
-    return parse_dyn_split_impl(info, args, tuned_axis, false);
-}
-
-static auto parse_static_split(const onnx_parser::node_info& info,
-                               const onnx_parser& parser,
-                               const std::vector<instruction_ref>& args,
-                               int64_t tuned_axis)
-{
-    return parse_static_split_impl(info, parser, args, tuned_axis, false);
-}
-
-struct parse_split : op_parser<parse_split>
-{
-    std::vector<op_desc> operators() const { return {{"Split"}}; }
+    std::vector<op_desc> operators() const { return {{"SplitToSequence"}}; }
 
     std::vector<instruction_ref> parse(const op_desc& opd,
                                        const onnx_parser& parser,
@@ -65,21 +50,28 @@ struct parse_split : op_parser<parse_split>
             axis = parser.parse_value(info.attributes.at("axis")).at<int>();
         }
 
+        int64_t keepdims = 1;
+        if(contains(info.attributes, "keepdims"))
+        {
+            keepdims = parser.parse_value(info.attributes.at("keepdims")).at<int>();
+        }
+
         const auto& input_shape = args[0]->get_shape();
-        // axis over which the split occurs (split_axis)
         int64_t tuned_axis = tune_axis(input_shape.ndim(), axis, opd.onnx_name);
 
         auto split_axis_is_fixed = [&]() {
             return input_shape.dyn_dims().at(tuned_axis).is_fixed();
         };
 
+        bool apply_keepdims = (keepdims == 0);
+        
         if(input_shape.dynamic() and not split_axis_is_fixed())
         {
-            return parse_dyn_split(info, args, tuned_axis);
+            return parse_dyn_split_impl(info, args, tuned_axis, apply_keepdims);
         }
         else
         {
-            return parse_static_split(info, parser, args, tuned_axis);
+            return parse_static_split_impl(info, parser, args, tuned_axis, apply_keepdims);
         }
     }
 };
