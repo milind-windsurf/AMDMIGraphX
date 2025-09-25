@@ -23,71 +23,12 @@
  */
 
 #include <onnx_test.hpp>
+#include <onnx_test_utils.hpp>
 
-TEST_CASE(splittosequence_dyn_input_fixed_split_axis_test)
-{
-    migraphx::program p;
-    auto* mm = p.get_main_module();
-    auto input =
-        mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {{10, 30}, {15, 15}}});
-    auto r1 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {1}}, {"starts", {0}}, {"ends", {5}}}), input);
-    auto r2 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {1}}, {"starts", {5}}, {"ends", {10}}}), input);
-    auto r3 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {1}}, {"starts", {10}}, {"ends", {15}}}), input);
-    mm->add_return({r1, r2, r3});
-
-    migraphx::onnx_options options;
-    options.default_dyn_dim_value = {10, 30};
-    auto prog = read_onnx("splittosequence_dyn_input_fixed_split_axis_test.onnx", options);
-    EXPECT(p == prog);
+TEST_CASE(splittosequence_dyn_input_fixed_split_axis_test) { 
+    split_dynamic_test_base("splittosequence_dyn_input_fixed_split_axis_test.onnx", {10, 30}, 1, 3); 
 }
 
-TEST_CASE(splittosequence_dyn_input_dyn_split_axis_test)
-{
-    migraphx::program p;
-    auto* mm = p.get_main_module();
-    auto input =
-        mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {{10, 30}, {15, 15}}});
-    auto split_dim =
-        mm->add_instruction(migraphx::make_op("dimensions_of", {{"start", 0}, {"end", 1}}), input);
-    migraphx::shape int64_scalar_shape{migraphx::shape::int64_type, {1}, {0}};
-    auto num_outputs_lit         = mm->add_literal(migraphx::literal{int64_scalar_shape, {3}});
-    auto num_outputs_minus_1_lit = mm->add_literal(migraphx::literal{int64_scalar_shape, {2}});
-    auto chunk_size              = mm->add_instruction(
-        migraphx::make_op("div"),
-        mm->add_instruction(migraphx::make_op("add"), split_dim, num_outputs_minus_1_lit),
-        num_outputs_lit);
-    auto r1 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {0}}}),
-        input,
-        mm->add_instruction(migraphx::make_op("mul"),
-                            chunk_size,
-                            mm->add_literal(migraphx::literal{int64_scalar_shape, {0}})),
-        mm->add_instruction(migraphx::make_op("mul"),
-                            chunk_size,
-                            mm->add_literal(migraphx::literal{int64_scalar_shape, {1}})));
-    auto r2 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {0}}}),
-        input,
-        mm->add_instruction(migraphx::make_op("mul"),
-                            chunk_size,
-                            mm->add_literal(migraphx::literal{int64_scalar_shape, {1}})),
-        mm->add_instruction(migraphx::make_op("mul"),
-                            chunk_size,
-                            mm->add_literal(migraphx::literal{int64_scalar_shape, {2}})));
-    auto r3 = mm->add_instruction(
-        migraphx::make_op("slice",
-                          {{"axes", {0}}, {"ends", {std::numeric_limits<int64_t>::max()}}}),
-        input,
-        mm->add_instruction(migraphx::make_op("mul"),
-                            chunk_size,
-                            mm->add_literal(migraphx::literal{int64_scalar_shape, {2}})));
-    mm->add_return({r1, r2, r3});
-
-    migraphx::onnx_options options;
-    options.default_dyn_dim_value = {10, 30};
-    auto prog = read_onnx("splittosequence_dyn_input_dyn_split_axis_test.onnx", options);
-    EXPECT(p == prog);
+TEST_CASE(splittosequence_dyn_input_dyn_split_axis_test) { 
+    split_dynamic_test_base("splittosequence_dyn_input_dyn_split_axis_test.onnx", {10, 30}, 0, 3); 
 }

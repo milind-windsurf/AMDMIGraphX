@@ -695,4 +695,95 @@ inline void scatter_test_base(const std::string& reduction, int axis, const std:
     EXPECT(p == prog);
 }
 
+// Shared utility for basic split/splittosequence tests
+inline void split_test_base(const std::string& onnx_file, 
+                           const std::vector<std::size_t>& input_shape = {10, 15},
+                           int axis = 1,
+                           const std::vector<std::vector<int64_t>>& slice_params = {{0, 5}, {5, 11}, {11, 15}},
+                           bool apply_squeeze = false)
+{
+    migraphx::program p;
+    auto* mm = p.get_main_module();
+    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, input_shape});
+    
+    std::vector<migraphx::instruction_ref> results;
+    for(const auto& slice_param : slice_params)
+    {
+        auto slice_result = mm->add_instruction(
+            migraphx::make_op("slice", {{"axes", {axis}}, {"starts", {slice_param[0]}}, {"ends", {slice_param[1]}}}), 
+            input);
+        
+        if(apply_squeeze)
+        {
+            results.push_back(mm->add_instruction(
+                migraphx::make_op("squeeze", {{"axes", {axis}}}), slice_result));
+        }
+        else
+        {
+            results.push_back(slice_result);
+        }
+    }
+    mm->add_return(results);
+    
+    auto prog = read_onnx(onnx_file);
+    EXPECT(p == prog);
+}
+
+// Shared utility for dynamic split tests
+inline void split_dynamic_test_base(const std::string& onnx_file,
+                                   const std::vector<std::size_t>& dyn_shape = {10, 30},
+                                   int axis = 1,
+                                   int num_outputs = 3)
+{
+    migraphx::program p;
+    auto* mm = p.get_main_module();
+    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {{dyn_shape[0], dyn_shape[1]}, {15, 15}}});
+    
+    if(axis == 1)
+    {
+        auto r1 = mm->add_instruction(
+            migraphx::make_op("slice", {{"axes", {1}}, {"starts", {0}}, {"ends", {5}}}), input);
+        auto r2 = mm->add_instruction(
+            migraphx::make_op("slice", {{"axes", {1}}, {"starts", {5}}, {"ends", {10}}}), input);
+        auto r3 = mm->add_instruction(
+            migraphx::make_op("slice", {{"axes", {1}}, {"starts", {10}}, {"ends", {15}}}), input);
+        mm->add_return({r1, r2, r3});
+    }
+    else
+    {
+        auto split_dim = mm->add_instruction(
+            migraphx::make_op("dimensions_of", {{"start", axis}, {"end", axis + 1}}), input);
+        migraphx::shape int64_scalar_shape{migraphx::shape::int64_type, {1}, {0}};
+        auto num_outputs_lit = mm->add_literal(migraphx::literal{int64_scalar_shape, {num_outputs}});
+        auto num_outputs_minus_1_lit = mm->add_literal(migraphx::literal{int64_scalar_shape, {num_outputs - 1}});
+        auto chunk_size = mm->add_instruction(
+            migraphx::make_op("div"),
+            mm->add_instruction(migraphx::make_op("add"), split_dim, num_outputs_minus_1_lit),
+            num_outputs_lit);
+        
+        std::vector<migraphx::instruction_ref> results;
+        for(int n = 0; n < num_outputs - 1; ++n)
+        {
+            results.push_back(mm->add_instruction(
+                migraphx::make_op("slice", {{"axes", {axis}}}),
+                input,
+                mm->add_instruction(migraphx::make_op("mul"), chunk_size, 
+                                   mm->add_literal(migraphx::literal{int64_scalar_shape, {n}})),
+                mm->add_instruction(migraphx::make_op("mul"), chunk_size, 
+                                   mm->add_literal(migraphx::literal{int64_scalar_shape, {n + 1}}))));
+        }
+        results.push_back(mm->add_instruction(
+            migraphx::make_op("slice", {{"axes", {axis}}, {"ends", {std::numeric_limits<int64_t>::max()}}}),
+            input,
+            mm->add_instruction(migraphx::make_op("mul"), chunk_size, 
+                               mm->add_literal(migraphx::literal{int64_scalar_shape, {num_outputs - 1}}))));
+        mm->add_return(results);
+    }
+    
+    migraphx::onnx_options options;
+    options.default_dyn_dim_value = {dyn_shape[0], dyn_shape[1]};
+    auto prog = read_onnx(onnx_file, options);
+    EXPECT(p == prog);
+}
+
 #endif

@@ -23,20 +23,8 @@
  */
 
 #include <onnx_test.hpp>
+#include <onnx_test_utils.hpp>
 
-TEST_CASE(splittosequence_keepdims_test)
-{
-    migraphx::program p;
-    auto* mm   = p.get_main_module();
-    auto input = mm->add_parameter("x", migraphx::shape{migraphx::shape::float_type, {10, 15}});
-    auto s1    = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {1}}, {"starts", {0}}, {"ends", {7}}}), input);
-    auto r1 = mm->add_instruction(migraphx::make_op("squeeze", {{"axes", {1}}}), s1);
-    auto s2 = mm->add_instruction(
-        migraphx::make_op("slice", {{"axes", {1}}, {"starts", {7}}, {"ends", {15}}}), input);
-    auto r2 = mm->add_instruction(migraphx::make_op("squeeze", {{"axes", {1}}}), s2);
-    mm->add_return({r1, r2});
-
-    auto prog = read_onnx("splittosequence_keepdims_test.onnx");
-    EXPECT(p == prog);
+TEST_CASE(splittosequence_keepdims_test) { 
+    split_test_base("splittosequence_keepdims_test.onnx", {10, 15}, 1, {{0, 7}, {7, 15}}, true); 
 }
