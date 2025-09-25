@@ -554,9 +554,6 @@ def disabled_tests_onnx_1_14_0(backend_test):
         r'test_resize_downsample_scales_linear_half_pixel_symmetric_cpu')
     backend_test.exclude(
         r'test_resize_upsample_scales_linear_half_pixel_symmetric_cpu')
-    backend_test.exclude(r'test_split_to_sequence_1_cpu')
-    backend_test.exclude(r'test_split_to_sequence_2_cpu')
-    backend_test.exclude(r'test_split_to_sequence_nokeepdims_cpu')
     backend_test.exclude(r'test_wrap_pad_cpu')
     # Scale and bias shape in GroupNorm were changed in 1.16.0 from num_groups to channels; MIGX implementation does not support the older version
     backend_test.exclude(r'test_group_normalization_epsilon_cpu')
