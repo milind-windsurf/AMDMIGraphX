@@ -100,6 +100,25 @@ struct gemm_softmax_gemm
             }
         }
 
+        if(gemm0_shape.ndim() < 2 or b1.ndim() < 2)
+        {
+            MIGRAPHX_THROW(name() + ": gemm operations require at least 2 dimensions");
+        }
+
+        std::size_t gemm0_inner_dim = gemm0_shape.lens()[gemm0_shape.ndim() - 1];
+        std::size_t b1_outer_dim    = b1.lens()[b1.ndim() - 2];
+
+        if(gemm0_inner_dim != b1_outer_dim)
+        {
+            std::stringstream err_msg;
+            err_msg << name() << ": incompatible dimensions for g+g fusion. "
+                    << "gemm0 output: " << gemm0_shape << ", gemm1 second operand: " << b1
+                    << ". For valid chain multiplication (A*B)*C, the inner dimension of A*B ("
+                    << gemm0_inner_dim << ") must match the first matrix dimension of C ("
+                    << b1_outer_dim << ")";
+            MIGRAPHX_THROW(err_msg.str());
+        }
+
         return op.compute_shape({gemm0_shape, b1});
     }
 
